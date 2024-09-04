@@ -35,7 +35,7 @@
 #include "FrSkySportTelemetry.h"
 
 // ====== START USER CONFIG ======
-#define BATT_PER_CELL               // Show battery voltage per cell instead of total voltage. Default is voltage per cell
+#define BATT_PER_CELL               // Show battery voltage per cell instead of total voltage
 //#define FROM_SEA_LEVEL              // Show altitude (from sea level, QNE) instead of height (from ground, QFE)
 #define MAX_CELL_VOLTS        4.20  // V
 #define MIN_CELL_VOLTS        3.30  // V
@@ -74,7 +74,7 @@ float batteryVoltage, cellVoltage, batteryPercent;
 uint32_t lastBatteryRead = 0;
 int hdopValue;
 float gpsLatitude, gpsLongitude, gpsSpeed, gpsCourse, altitudeGPS;
-float actualPressure, groundPressure, baroAltitude, verticalSpeed, baroTemp;
+float actualPressure, referencePressure, baroAltitude, verticalSpeed, baroTemp;
 float tempo = millis();
 float N1 = 0, N2 = 0, N3 = 0, D1 = 0, D2 = 0;
 float alt[51];
@@ -95,8 +95,20 @@ void setup() {
                          Adafruit_BMP280::FILTER_X16,     // Filtering
                          Adafruit_BMP280::STANDBY_MS_1);  // Standby time
   delay(1000);
-  groundPressure = baroSensor.readPressure(); // Read ground pressure for QFE operation
   baroAltitude = 0;
+
+#ifdef FROM_SEA_LEVEL
+  referencePressure = SEA_PRESSURE;
+
+#else
+  referencePressure = 0;
+  for (int i = 0; i < 200; i++) { // Read ground pressure for QFE operation
+    referencePressure += baroSensor.readPressure();
+    delayMicroseconds(1000);
+  }
+  referencePressure = referencePressure / 200.0;
+#endif
+
   delay(1000);
   batteryVoltage = (((((float)analogRead(VOLTAGE_PIN) / (float)MAX_ADC * ADC_AREF) * ((float)DIVIDER_UPPER_R + (float)DIVIDER_LOWER_R)) / (float)DIVIDER_LOWER_R) * VOLTAGE_RATE) + VOLTAGE_OFFSET;
   if (batteryVoltage <= 17.50) // Get number of cells from total voltage
@@ -161,14 +173,9 @@ void loop() {
 
 
   // Barometer
-#ifdef FROM_SEA_LEVEL
-  float referencePressure = SEA_PRESSURE;
-#else
-  float referencePressure = groundPressure;
-#endif
-
   actualPressure = baroSensor.readPressure();
-  baroAltitude = 44330 * (1.0 - pow(actualPressure / referencePressure, 0.1903));
+  baroAltitude = 44330 * (1.0 - pow(actualPressure / referencePressure, 0.190284));
+  //baroAltitudeFt = 145366.45 * (1.0 - pow(actualPressure / referencePressure, 0.190284));
   baroTemp = baroSensor.readTemperature();
   tempo = millis();
   N1 = 0;
