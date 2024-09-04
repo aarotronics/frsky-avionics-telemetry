@@ -25,17 +25,6 @@ This project uses following libraries:
  - [TimerOne](https://github.com/PaulStoffregen/TimerOne) by PaulStoffregen
  - [Adafruit_BMP280_Library](https://github.com/adafruit/Adafruit_BMP280_Library.git) by adafruit
 
-
-In **Adafruit_BMP280.h** change:
-```c++
-#define BMP280_ADDRESS                (0x77)
-```
-to:
-```c++
-#define BMP280_ADDRESS                (0x76)
-```
-
-
 In **FrSkySportSensorRpm.cpp** change:
 ```c++
 void FrSkySportSensorRpm::setData(uint32_t rpm, float t1, float t2)
@@ -55,3 +44,4 @@ void FrSkySportSensorRpm::setData(uint32_t rpm, float t1, float t2)
 }
 ```
 
+As we're going to use virtual rpm sensor to parse some other data.
