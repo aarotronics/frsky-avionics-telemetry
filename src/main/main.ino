@@ -111,7 +111,7 @@ void loop() {
 
 
   // Voltage
-  if ((millis() - lastBatteryRead) >= EMA_FILTER_UPDATE) {
+  if (millis() >= (lastBatteryRead + EMA_FILTER_UPDATE)) {
     filteredADC = (uint16_t)((EMA_FILTER_ALPHA * analogRead(VOLTAGE_PIN)) + ((1.0 - EMA_FILTER_ALPHA) * filteredADC));
     batteryVoltage = ((((float)filteredADC / (float)MAX_ADC * ADC_AREF) * ((float)DIVIDER_UPPER_R + (float)DIVIDER_LOWER_R)) / (float)DIVIDER_LOWER_R) * VOLTAGE_RATE;
     cellVoltage = batteryVoltage / (float)cellNum;
