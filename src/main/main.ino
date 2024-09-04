@@ -36,7 +36,7 @@
 
 // ====== START USER CONFIG ======
 #define BATT_PER_CELL               // Show battery voltage per cell instead of total voltage. Default is voltage per cell.
-//#define FROM_SEA_LEVEL              // Show altitude (from sea level) instead of height (from ground).
+//#define FROM_SEA_LEVEL              // Show altitude (from sea level, QNE) instead of height (from ground, QFE).
 #define MAX_CELL_VOLTS        4.20  // V
 #define MIN_CELL_VOLTS        3.30  // V
 #define DIVIDER_UPPER_R       6.80  // KOhm
@@ -55,7 +55,7 @@
 #define VSPD_MAX_SAMPLES      50
 #define UPDATE_DELAY          10000     // FrSky SmartPort update period (us).
 #define LED_PIN               13        // Status LED, will go on after start up when system is ready to go.
-#define SEA_PRESSURE          1013.25   // Default sea pressure (hPa)
+#define SEA_PRESSURE          101325    // Default sea pressure for QNE operation (Pa)
 
 
 Adafruit_BMP280         baroSensor;
@@ -73,7 +73,7 @@ float batteryVoltage, cellVoltage, batteryPercent;
 uint32_t lastBatteryRead = 0;
 int hdopValue;
 float gpsLatitude, gpsLongitude, gpsSpeed, gpsCourse, altitudeGPS;
-float groundPressure, baroAltitude, verticalSpeed, baroTemp;
+float actualPressure, groundPressure, baroAltitude, verticalSpeed, baroTemp;
 float tempo = millis();
 float N1 = 0, N2 = 0, N3 = 0, D1 = 0, D2 = 0;
 float alt[51];
@@ -87,10 +87,15 @@ void setup() {
   analogReference(INTERNAL); // Set analog reference to ATMega328P internal 1V1.
   GPS_SERIAL.begin(57600);
   telemetry.begin(FrSkySportSingleWireSerial::SOFT_SERIAL_PIN_3, &fcsFrSky, &gpsFrSky, &varioFrSky, &rpmFrSky);
-  baroSensor.begin();
-  delay(1500);
-  groundPressure = baroSensor.readPressure() / 100.0; // Set actual default ground pressure to calculate height.
-  baroAltitude = 0.0;
+  baroSensor.begin(0x76);
+  baroSensor.setSampling(Adafruit_BMP280::MODE_NORMAL,   // Operating Mode
+                         Adafruit_BMP280::SAMPLING_X16,  // Temp oversampling
+                         Adafruit_BMP280::SAMPLING_X16,   // Pressure oversampling
+                         Adafruit_BMP280::FILTER_X16,     // Filtering
+                         Adafruit_BMP280::STANDBY_MS_1); // Standby time
+  delay(1000);
+  groundPressure = baroSensor.readPressure(); // Set actual default ground pressure to calculate height.
+  baroAltitude = 0;
   delay(1000);
   batteryVoltage = ((((float)analogRead(VOLTAGE_PIN) / (float)MAX_ADC * ADC_AREF) * ((float)DIVIDER_UPPER_R + (float)DIVIDER_LOWER_R)) / (float)DIVIDER_LOWER_R) * VOLTAGE_RATE;
   if (batteryVoltage <= 17.50) // Get number of cells from total voltage.
@@ -156,10 +161,13 @@ void loop() {
 
   // Barometer
 #ifdef FROM_SEA_LEVEL
-  baroAltitude = baroSensor.readAltitude(SEA_PRESSURE);
+  float referencePressure = SEA_PRESSURE;
 #else
-  baroAltitude = baroSensor.readAltitude(groundPressure);
+  float referencePressure = groundPressure;
 #endif
+
+  actualPressure = baroSensor.readPressure();
+  baroAltitude = 44330 * (1.0 - pow(actualPressure / referencePressure, 0.1903));
   baroTemp = baroSensor.readTemperature();
   tempo = millis();
   N1 = 0;
