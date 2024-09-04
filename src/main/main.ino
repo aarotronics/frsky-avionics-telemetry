@@ -35,17 +35,18 @@
 #include "FrSkySportTelemetry.h"
 
 // ====== START USER CONFIG ======
-#define BATT_PER_CELL               // Show battery voltage per cell instead of total voltage. Default is voltage per cell.
-//#define FROM_SEA_LEVEL              // Show altitude (from sea level, QNE) instead of height (from ground, QFE).
+#define BATT_PER_CELL               // Show battery voltage per cell instead of total voltage. Default is voltage per cell
+//#define FROM_SEA_LEVEL              // Show altitude (from sea level, QNE) instead of height (from ground, QFE)
 #define MAX_CELL_VOLTS        4.20  // V
 #define MIN_CELL_VOLTS        3.30  // V
 #define DIVIDER_UPPER_R       6.80  // KOhm
 #define DIVIDER_LOWER_R       0.47  // KOhm
 #define VOLTAGE_RATE          1.0
+#define VOLTAGE_OFFSET        0
 
 
 // ====== END USER CONFIG ======
-#define VOLTAGE_PIN           A0    // Analog pin where voltage sensor is connected.
+#define VOLTAGE_PIN           A0    // Analog pin where voltage sensor is connected
 #define EMA_FILTER_ALPHA      0.10  // Amount of the new value over 1.0 that will be added in each filter loop
 #define EMA_FILTER_UPDATE     20    // ms filter loop time
 #define MAX_ADC               1023  // 10 bit ADC
@@ -53,8 +54,8 @@
 #define GPS_SERIAL            Serial
 #define VSPD_SAMPLES          40
 #define VSPD_MAX_SAMPLES      50
-#define UPDATE_DELAY          10000     // FrSky SmartPort update period (us).
-#define LED_PIN               13        // Status LED, will go on after start up when system is ready to go.
+#define UPDATE_DELAY          10000     // FrSky SmartPort update period (us)
+#define LED_PIN               13        // Status LED, will turn ON after start-up when system is ready to go
 #define SEA_PRESSURE          101325    // Default sea pressure for QNE operation (Pa)
 
 
@@ -84,31 +85,31 @@ void setup() {
   pinMode(LED_PIN, OUTPUT);
   digitalWrite(LED_PIN, LOW);
   delay(100);
-  analogReference(INTERNAL); // Set analog reference to ATMega328P internal 1V1.
+  analogReference(INTERNAL); // Set analog reference to ATMega328P internal 1V1
   GPS_SERIAL.begin(57600);
   telemetry.begin(FrSkySportSingleWireSerial::SOFT_SERIAL_PIN_3, &fcsFrSky, &gpsFrSky, &varioFrSky, &rpmFrSky);
   baroSensor.begin(0x76);
-  baroSensor.setSampling(Adafruit_BMP280::MODE_NORMAL,   // Operating Mode
-                         Adafruit_BMP280::SAMPLING_X16,  // Temp oversampling
+  baroSensor.setSampling(Adafruit_BMP280::MODE_NORMAL,    // Operating Mode
+                         Adafruit_BMP280::SAMPLING_X16,   // Temp oversampling
                          Adafruit_BMP280::SAMPLING_X16,   // Pressure oversampling
                          Adafruit_BMP280::FILTER_X16,     // Filtering
-                         Adafruit_BMP280::STANDBY_MS_1); // Standby time
+                         Adafruit_BMP280::STANDBY_MS_1);  // Standby time
   delay(1000);
-  groundPressure = baroSensor.readPressure(); // Set actual default ground pressure to calculate height.
+  groundPressure = baroSensor.readPressure(); // Read ground pressure for QFE operation
   baroAltitude = 0;
   delay(1000);
-  batteryVoltage = ((((float)analogRead(VOLTAGE_PIN) / (float)MAX_ADC * ADC_AREF) * ((float)DIVIDER_UPPER_R + (float)DIVIDER_LOWER_R)) / (float)DIVIDER_LOWER_R) * VOLTAGE_RATE;
-  if (batteryVoltage <= 17.50) // Get number of cells from total voltage.
+  batteryVoltage = (((((float)analogRead(VOLTAGE_PIN) / (float)MAX_ADC * ADC_AREF) * ((float)DIVIDER_UPPER_R + (float)DIVIDER_LOWER_R)) / (float)DIVIDER_LOWER_R) * VOLTAGE_RATE) + VOLTAGE_OFFSET;
+  if (batteryVoltage <= 17.50) // Get number of cells from total voltage
     cellNum = 4;
   if (batteryVoltage <= 12.70)
     cellNum = 3;
   if (batteryVoltage <= 8.50)
     cellNum = 2;
 
-  Timer1.initialize(UPDATE_DELAY);        // Interruption used to send data to FrSky SmartPort.
+  Timer1.initialize(UPDATE_DELAY);        // Interruption used to send data to FrSky SmartPort
   Timer1.attachInterrupt(SmartPort_ISR);
   interrupts();
-  digitalWrite(LED_PIN, HIGH);            // Turn on LED when ready to go.
+  digitalWrite(LED_PIN, HIGH);            // Turn LED ON when ready to go
 }
 
 
@@ -118,7 +119,7 @@ void loop() {
   // Voltage
   if (millis() >= (lastBatteryRead + EMA_FILTER_UPDATE)) {
     filteredADC = (uint16_t)((EMA_FILTER_ALPHA * analogRead(VOLTAGE_PIN)) + ((1.0 - EMA_FILTER_ALPHA) * filteredADC));
-    batteryVoltage = ((((float)filteredADC / (float)MAX_ADC * ADC_AREF) * ((float)DIVIDER_UPPER_R + (float)DIVIDER_LOWER_R)) / (float)DIVIDER_LOWER_R) * VOLTAGE_RATE;
+    batteryVoltage = (((((float)filteredADC / (float)MAX_ADC * ADC_AREF) * ((float)DIVIDER_UPPER_R + (float)DIVIDER_LOWER_R)) / (float)DIVIDER_LOWER_R) * VOLTAGE_RATE) + VOLTAGE_OFFSET;
     cellVoltage = batteryVoltage / (float)cellNum;
     batteryPercent = constrain((((cellVoltage - MIN_CELL_VOLTS) / (MAX_CELL_VOLTS - MIN_CELL_VOLTS)) * 100.0), 0.0, 100.0);
     lastBatteryRead = millis();
