@@ -19,8 +19,8 @@
 // ======== GLOBAL LIBS ==========
 #include <TimerOne.h>
 #include <Wire.h>
+#include <SoftwareSerial.h>
 #include <math.h>
-//#include <Adafruit_Sensor.h>
 
 
 // ========= LOCAL LIBS ==========
@@ -33,19 +33,16 @@
 #include "FrSkySportSensorGps.h"
 #include "FrSkySportSensorRpm.h"
 #include "FrSkySportTelemetry.h"
-#include "SoftwareSerial.h"
 
 // ====== START USER CONFIG ======
-//--Voltage Sensor--
 #define BATT_PER_CELL               // Show battery voltage per cell instead of total voltage. Default is voltage per cell.
+//#define FROM_SEA_LEVEL              // Show altitude (from sea level) instead of height (from ground).
 #define MAX_CELL_VOLTS        4.20  // V
 #define MIN_CELL_VOLTS        3.30  // V
 #define DIVIDER_UPPER_R       6.80  // KOhm
 #define DIVIDER_LOWER_R       0.47  // KOhm
 #define VOLTAGE_RATE          1.0
 
-//--Barometer Sensor--
-//#define FROM_SEA_LEVEL  // Show altitude (from sea level) instead of height (from ground).
 
 // ====== END USER CONFIG ======
 #define VOLTAGE_PIN           A0    // Analog pin where voltage sensor is connected.
@@ -83,8 +80,6 @@ float alt[51];
 float tim[51];
 
 
-
-
 void setup() {
   pinMode(LED_PIN, OUTPUT);
   digitalWrite(LED_PIN, LOW);
@@ -98,8 +93,8 @@ void setup() {
   baroAltitude = 0.0;
   delay(1000);
   batteryVoltage = ((((float)analogRead(VOLTAGE_PIN) / (float)MAX_ADC * ADC_AREF) * ((float)DIVIDER_UPPER_R + (float)DIVIDER_LOWER_R)) / (float)DIVIDER_LOWER_R) * VOLTAGE_RATE;
-  if (batteryVoltage <= 17.50)
-    cellNum = 4;          // Get number of cells from total voltage.
+  if (batteryVoltage <= 17.50) // Get number of cells from total voltage.
+    cellNum = 4;
   if (batteryVoltage <= 12.70)
     cellNum = 3;
   if (batteryVoltage <= 8.50)
@@ -112,8 +107,8 @@ void setup() {
 }
 
 
-
 void loop() {
+
 
   // Voltage
   if ((millis() - lastBatteryRead) >= EMA_FILTER_UPDATE) {
@@ -125,13 +120,10 @@ void loop() {
   }
 
 
-  //GPS
-  //startTime = millis();
-  //do {
-  while (GPS_SERIAL.available())
+  // GPS
+  while (GPS_SERIAL.available()) {
     gpsSensor.encode(GPS_SERIAL.read());
-  // endTime = millis();
-  //} while ( (endTime - startTime) < GPS_DELAY);
+  }
 
   if (gpsSensor.location.isValid()) {
     gpsLatitude = gpsSensor.location.lat();
@@ -162,11 +154,7 @@ void loop() {
   hdopValue = gpsSensor.hdop.hdop();
 
 
-
-
-
-
-  //Barometer
+  // Barometer
 #ifdef FROM_SEA_LEVEL
   baroAltitude = baroSensor.readAltitude(SEA_PRESSURE);
 #else
@@ -205,8 +193,8 @@ void loop() {
   gpsFrSky.setData(gpsLatitude, gpsLongitude, altitudeGPS, gpsSpeed, gpsCourse, 0, 0, 0, 0, 0, 0);
   varioFrSky.setData(baroAltitude, verticalSpeed);
   rpmFrSky.setData(hdopValue, baroTemp, batteryPercent);
-}
 
+}
 
 
 // Send data to RX SmartPort
