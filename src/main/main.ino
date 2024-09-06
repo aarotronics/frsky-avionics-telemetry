@@ -68,8 +68,7 @@ FrSkySportTelemetry     telemetry;
 
 
 uint8_t cellNum;
-uint16_t filteredADC = 0;
-float batteryVoltage, cellVoltage, batteryPercent;
+float filteredADC = 0, batteryVoltage, cellVoltage, batteryPercent;
 uint32_t lastFilterTime = 0;
 int hdopValue;
 float gpsLatitude, gpsLongitude, gpsSpeed, gpsCourse, altitudeGPS;
@@ -128,8 +127,8 @@ void loop() {
 
   // Voltage
   if (millis() >= (lastFilterTime + EMA_FILTER_UPDATE)) {
-    filteredADC = (uint16_t)((EMA_FILTER_ALPHA * analogRead(VOLTAGE_PIN)) + ((1.0 - EMA_FILTER_ALPHA) * filteredADC));
-    batteryVoltage = (((((float)filteredADC / (float)MAX_ADC * ADC_AREF) * ((float)DIVIDER_UPPER_R + (float)DIVIDER_LOWER_R)) / (float)DIVIDER_LOWER_R) * VOLTAGE_RATE) + VOLTAGE_OFFSET;
+    filteredADC = (analogRead(VOLTAGE_PIN) * EMA_FILTER_ALPHA) + (filteredADC * (1.0 - EMA_FILTER_ALPHA));
+    batteryVoltage = ((((filteredADC / (float)MAX_ADC * ADC_AREF) * ((float)DIVIDER_UPPER_R + (float)DIVIDER_LOWER_R)) / (float)DIVIDER_LOWER_R) * VOLTAGE_RATE) + VOLTAGE_OFFSET;
     cellVoltage = batteryVoltage / (float)cellNum;
     batteryPercent = constrain((((cellVoltage - MIN_CELL_VOLTS) / (MAX_CELL_VOLTS - MIN_CELL_VOLTS)) * 100.0), 0.0, 100.0);
 #ifdef BATT_PER_CELL
