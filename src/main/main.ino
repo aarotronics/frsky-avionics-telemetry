@@ -6,14 +6,12 @@
    Arduino uses a GB-1803 GPS module, a BMP280 digital barometer and a resistor divider
    filtered with a capacitor; to obtain navigation data, altitude data and battery
    voltage data. Using FrSkySportTelemetry library, Arduino emulates FrSky sensors and
-   display all data in the transmitter LCD. Adafruit_BMP280_Library and TinyGPS libraries
-   need to be modified in order to work properly with BMP280 running through I2C and
-   GLONASS GNSS modules.
+   display all data in the transmitter LCD.
 
 
 
    Aaron G.
-   Apr 2020
+   Apr 2020 (Updated Sep 2024)
 */
 
 // ======== GLOBAL LIBS ==========
@@ -37,6 +35,7 @@
 // ====== START USER CONFIG ======
 #define BATT_PER_CELL               // Show battery voltage per cell instead of total voltage
 //#define FROM_SEA_LEVEL              // Show altitude (from sea level, QNE) instead of height (from ground, QFE)
+//#define ALTITUDE_IN_FEET            // Show altitude/height in feet instead of meters
 #define MAX_CELL_VOLTS        4.20  // V
 #define MIN_CELL_VOLTS        3.30  // V
 #define DIVIDER_UPPER_R       6.80  // KOhm
@@ -46,6 +45,7 @@
 
 
 // ====== END USER CONFIG ======
+#define LED_PIN               13    // Status LED, will turn ON after start-up when system is ready to go
 #define VOLTAGE_PIN           A0    // Analog pin where voltage sensor is connected
 #define EMA_FILTER_ALPHA      0.10  // Amount of the new value over 1.0 that will be added in each filter loop
 #define EMA_FILTER_UPDATE     20    // ms filter loop time
@@ -54,8 +54,7 @@
 #define GPS_SERIAL            Serial
 #define VSPD_SAMPLES          40
 #define VSPD_MAX_SAMPLES      50
-#define UPDATE_DELAY          10000     // FrSky SmartPort update period (us)
-#define LED_PIN               13        // Status LED, will turn ON after start-up when system is ready to go
+#define SMARTPORT_UPDATE      10000     // FrSky SmartPort update period (us)
 #define SEA_PRESSURE          101325    // Default sea pressure for QNE operation (Pa)
 
 
@@ -71,7 +70,7 @@ FrSkySportTelemetry     telemetry;
 uint8_t cellNum;
 uint16_t filteredADC = 0;
 float batteryVoltage, cellVoltage, batteryPercent;
-uint32_t lastBatteryRead = 0;
+uint32_t lastFilterTime = 0;
 int hdopValue;
 float gpsLatitude, gpsLongitude, gpsSpeed, gpsCourse, altitudeGPS;
 float actualPressure, referencePressure, baroAltitude, verticalSpeed, baroTemp;
@@ -104,9 +103,9 @@ void setup() {
   referencePressure = 0;
   for (int i = 0; i < 200; i++) { // Read ground pressure for QFE operation
     referencePressure += baroSensor.readPressure();
-    delayMicroseconds(1000);
+    delayMicroseconds(5000);
   }
-  referencePressure = referencePressure / 200.0;
+  referencePressure /= 200.0;
 #endif
 
   delay(1000);
@@ -118,7 +117,7 @@ void setup() {
   if (batteryVoltage <= 8.50)
     cellNum = 2;
 
-  Timer1.initialize(UPDATE_DELAY);        // Interruption used to send data to FrSky SmartPort
+  Timer1.initialize(SMARTPORT_UPDATE);    // Interruption used to send data to FrSky SmartPort
   Timer1.attachInterrupt(SmartPort_ISR);
   interrupts();
   digitalWrite(LED_PIN, HIGH);            // Turn LED ON when ready to go
@@ -127,55 +126,62 @@ void setup() {
 
 void loop() {
 
-
   // Voltage
-  if (millis() >= (lastBatteryRead + EMA_FILTER_UPDATE)) {
+  if (millis() >= (lastFilterTime + EMA_FILTER_UPDATE)) {
     filteredADC = (uint16_t)((EMA_FILTER_ALPHA * analogRead(VOLTAGE_PIN)) + ((1.0 - EMA_FILTER_ALPHA) * filteredADC));
     batteryVoltage = (((((float)filteredADC / (float)MAX_ADC * ADC_AREF) * ((float)DIVIDER_UPPER_R + (float)DIVIDER_LOWER_R)) / (float)DIVIDER_LOWER_R) * VOLTAGE_RATE) + VOLTAGE_OFFSET;
     cellVoltage = batteryVoltage / (float)cellNum;
     batteryPercent = constrain((((cellVoltage - MIN_CELL_VOLTS) / (MAX_CELL_VOLTS - MIN_CELL_VOLTS)) * 100.0), 0.0, 100.0);
-    lastBatteryRead = millis();
+#ifdef BATT_PER_CELL
+    fcsFrSky.setData(0, cellVoltage);
+#else
+    fcsFrSky.setData(0, batteryVoltage);
+#endif
+    rpmFrSky.setData(hdopValue, baroTemp, batteryPercent);
+    lastFilterTime = millis();
   }
 
 
   // GPS
-  while (GPS_SERIAL.available()) {
-    gpsSensor.encode(GPS_SERIAL.read());
-  }
+  if (GPS_SERIAL.available()) {
+    while (GPS_SERIAL.available()) {
+      gpsSensor.encode(GPS_SERIAL.read());
+    }
 
-  if (gpsSensor.location.isValid()) {
-    gpsLatitude = gpsSensor.location.lat();
-    gpsLongitude = gpsSensor.location.lng();
-  } else {
-    gpsLatitude = 0.0000000;
-    gpsLongitude = 0.0000000;
-  }
+    if (gpsSensor.location.isValid()) {
+      gpsLatitude = gpsSensor.location.lat();
+      gpsLongitude = gpsSensor.location.lng();
+    } else {
+      gpsLatitude = 0.0000000;
+      gpsLongitude = 0.0000000;
+    }
 
-  if (gpsSensor.speed.isValid()) {
-    gpsSpeed = gpsSensor.speed.mps();
-  } else {
-    gpsSpeed = 0.0;
-  }
+    if (gpsSensor.speed.isValid()) {
+      gpsSpeed = gpsSensor.speed.mps();
+    } else {
+      gpsSpeed = 0.0;
+    }
 
-  if (gpsSensor.altitude.isValid()) {
-    altitudeGPS = gpsSensor.altitude.meters();
-  } else {
-    altitudeGPS = 0.0;
-  }
+    if (gpsSensor.altitude.isValid()) {
+      altitudeGPS = gpsSensor.altitude.meters();
+    } else {
+      altitudeGPS = 0.0;
+    }
 
-  if (gpsSensor.course.isValid()) {
-    gpsCourse = gpsSensor.course.deg();
-  } else {
-    gpsCourse = 0.0;
-  }
+    if (gpsSensor.course.isValid()) {
+      gpsCourse = gpsSensor.course.deg();
+    } else {
+      gpsCourse = 0.0;
+    }
 
-  hdopValue = gpsSensor.hdop.hdop();
+    hdopValue = gpsSensor.hdop.hdop();
+    gpsFrSky.setData(gpsLatitude, gpsLongitude, altitudeGPS, gpsSpeed, gpsCourse, 0, 0, 0, 0, 0, 0);
+  }
 
 
   // Barometer
   actualPressure = baroSensor.readPressure();
   baroAltitude = 44330 * (1.0 - pow(actualPressure / referencePressure, 0.190284));
-  //baroAltitudeFt = 145366.45 * (1.0 - pow(actualPressure / referencePressure, 0.190284));
   baroTemp = baroSensor.readTemperature();
   tempo = millis();
   N1 = 0;
@@ -183,32 +189,29 @@ void loop() {
   N3 = 0;
   D1 = 0;
   D2 = 0;
-  verticalSpeed = 0.0;
-  for (int cc = 1; cc <= VSPD_MAX_SAMPLES; cc++) {
-    alt[(cc - 1)] = alt[cc];
-    tim[(cc - 1)] = tim[cc];
+  verticalSpeed = 0;
+  for (int j = 0; j < VSPD_MAX_SAMPLES; j++) {
+    alt[j] = alt[(j + 1)];
+    tim[j] = tim[(j + 1)];
   }
   alt[VSPD_MAX_SAMPLES] = baroAltitude;
   tim[VSPD_MAX_SAMPLES] = tempo;
   float stime = tim[VSPD_MAX_SAMPLES - VSPD_SAMPLES];
-  for (int cc = (VSPD_MAX_SAMPLES - VSPD_SAMPLES); cc < VSPD_MAX_SAMPLES; cc++) {
-    N1 += (tim[cc] - stime) * alt[cc];
-    N2 += (tim[cc] - stime);
-    N3 += (alt[cc]);
-    D1 += (tim[cc] - stime) * (tim[cc] - stime);
-    D2 += (tim[cc] - stime);
+  for (int k = (VSPD_MAX_SAMPLES - VSPD_SAMPLES); k < VSPD_MAX_SAMPLES; k++) {
+    N1 += (tim[k] - stime) * alt[k];
+    N2 += (tim[k] - stime);
+    N3 += (alt[k]);
+    D1 += (tim[k] - stime) * (tim[k] - stime);
+    D2 += (tim[k] - stime);
   }
   verticalSpeed = 1000 * ((VSPD_SAMPLES * N1) - N2 * N3) / (VSPD_SAMPLES * D1 - D2 * D2);
 
-
-#ifdef BATT_PER_CELL
-  fcsFrSky.setData(0, cellVoltage);
-#else
-  fcsFrSky.setData(0, batteryVoltage);
+#ifdef ALTITUDE_IN_FEET
+  baroAltitude *= 3.28084;   // Convert altitude from m to ft
+  verticalSpeed *= 196.8504; // Convert VSpd from m/s to ft/min
 #endif
-  gpsFrSky.setData(gpsLatitude, gpsLongitude, altitudeGPS, gpsSpeed, gpsCourse, 0, 0, 0, 0, 0, 0);
+
   varioFrSky.setData(baroAltitude, verticalSpeed);
-  rpmFrSky.setData(hdopValue, baroTemp, batteryPercent);
 
 }
 
