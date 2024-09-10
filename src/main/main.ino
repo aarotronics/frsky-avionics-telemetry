@@ -71,7 +71,7 @@ FrSkySportTelemetry     telemetry(new FrSkySportPollingDynamic());
 
 
 uint8_t cellNum;
-float adcToVoltsConverionRate;
+float adcToVoltsConversionRate;
 float filteredADC = 0, batteryVoltage, cellVoltage, batteryPercent;
 uint32_t lastBatFilterTime = 0, lastVarioFilterTime = 0;
 int gpsHDOP;
@@ -113,8 +113,8 @@ void setup() {
 #endif
 
   delay(1000);
-  adcToVoltsConverionRate = ((float)ADC_AREF / (float)MAX_ADC) * (((float)DIVIDER_UPPER_R + (float)DIVIDER_LOWER_R) / (float)DIVIDER_LOWER_R);
-  batteryVoltage = (analogRead(VOLTAGE_PIN) * adcToVoltsConverionRate * VOLTAGE_RATE) + VOLTAGE_OFFSET;
+  adcToVoltsConversionRate = ((float)ADC_AREF / (float)MAX_ADC) * (((float)DIVIDER_UPPER_R + (float)DIVIDER_LOWER_R) / (float)DIVIDER_LOWER_R);
+  batteryVoltage = (analogRead(VOLTAGE_PIN) * adcToVoltsConversionRate * VOLTAGE_RATE) + VOLTAGE_OFFSET;
   if (batteryVoltage <= 17500) // Get number of cells from total voltage
     cellNum = 4;
   if (batteryVoltage <= 12700)
@@ -134,7 +134,7 @@ void loop() {
   // Voltage
   if (millis() >= (lastBatFilterTime + EMA_PERIOD_BAT)) {
     filteredADC = (analogRead(VOLTAGE_PIN) * EMA_ALPHA_BAT) + (filteredADC * (1.0 - EMA_ALPHA_BAT));
-    batteryVoltage = (filteredADC * adcToVoltsConverionRate * VOLTAGE_RATE) + VOLTAGE_OFFSET;
+    batteryVoltage = (filteredADC * adcToVoltsConversionRate * VOLTAGE_RATE) + VOLTAGE_OFFSET;
     cellVoltage = batteryVoltage / (float)cellNum;
     batteryPercent = constrain(((cellVoltage - MIN_CELL_VOLTS) * 100.0 / (MAX_CELL_VOLTS - MIN_CELL_VOLTS)) , 0.0, 100.0);
 #ifdef BATT_PER_CELL
@@ -223,7 +223,7 @@ void loop() {
 
 #ifdef ALTITUDE_IN_FEET
     baroAltitude *= 3.2808;    // Convert altitude from m to ft
-    instantVSpd *= 196.8504; // Convert VSpd from m/s to ft/min
+    instantVSpd *= 196.8504;   // Convert VSpd from m/s to ft/min
 #endif
 
     varioFrSky.setData(baroAltitude, instantVSpd);
