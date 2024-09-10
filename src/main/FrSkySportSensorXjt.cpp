@@ -1,6 +1,6 @@
 /*
-  FrSky XJT module S.Port output decoder class for Teensy 3.x and 328P based boards (e.g. Pro Mini, Nano, Uno)
-  (c) Pawelsky 20160313
+  FrSky XJT module S.Port output decoder class for Teensy 3.x/4.0/LC, ESP8266, ATmega2560 (Mega) and ATmega328P based boards (e.g. Pro Mini, Nano, Uno)
+  (c) Pawelsky 202000503
   Not for commercial use
 
   Note that this special sensor class can only be used for decoding.
@@ -48,18 +48,18 @@ uint16_t FrSkySportSensorXjt::decodeData(uint8_t id, uint16_t appId, uint32_t da
         return appId;
       case 0x0006:
         // DEVIATION FROM SPEC: in reality cells are numbered from 0 not from 1 like in the FrSky protocol spec
-        if((data & 0xF000) == 0x0) cell[0]  = (data & 0x0FFF) / 500.0; 
-        if((data & 0xF000) == 0x1) cell[1]  = (data & 0x0FFF) / 500.0; 
-        if((data & 0xF000) == 0x2) cell[2]  = (data & 0x0FFF) / 500.0; 
-        if((data & 0xF000) == 0x3) cell[3]  = (data & 0x0FFF) / 500.0; 
-        if((data & 0xF000) == 0x4) cell[4]  = (data & 0x0FFF) / 500.0; 
-        if((data & 0xF000) == 0x5) cell[5]  = (data & 0x0FFF) / 500.0; 
-        if((data & 0xF000) == 0x6) cell[6]  = (data & 0x0FFF) / 500.0; 
-        if((data & 0xF000) == 0x7) cell[7]  = (data & 0x0FFF) / 500.0; 
-        if((data & 0xF000) == 0x8) cell[8]  = (data & 0x0FFF) / 500.0; 
-        if((data & 0xF000) == 0x9) cell[9]  = (data & 0x0FFF) / 500.0; 
-        if((data & 0xF000) == 0xA) cell[10] = (data & 0x0FFF) / 500.0; 
-        if((data & 0xF000) == 0xB) cell[11] = (data & 0x0FFF) / 500.0; 
+        if((data & 0xF000) == 0x0000) cell[0]  = (data & 0x0FFF) / 500.0; 
+        if((data & 0xF000) == 0x1000) cell[1]  = (data & 0x0FFF) / 500.0; 
+        if((data & 0xF000) == 0x2000) cell[2]  = (data & 0x0FFF) / 500.0; 
+        if((data & 0xF000) == 0x3000) cell[3]  = (data & 0x0FFF) / 500.0; 
+        if((data & 0xF000) == 0x4000) cell[4]  = (data & 0x0FFF) / 500.0; 
+        if((data & 0xF000) == 0x5000) cell[5]  = (data & 0x0FFF) / 500.0; 
+        if((data & 0xF000) == 0x6000) cell[6]  = (data & 0x0FFF) / 500.0; 
+        if((data & 0xF000) == 0x7000) cell[7]  = (data & 0x0FFF) / 500.0; 
+        if((data & 0xF000) == 0x8000) cell[8]  = (data & 0x0FFF) / 500.0; 
+        if((data & 0xF000) == 0x9000) cell[9]  = (data & 0x0FFF) / 500.0; 
+        if((data & 0xF000) == 0xA000) cell[10] = (data & 0x0FFF) / 500.0; 
+        if((data & 0xF000) == 0xB000) cell[11] = (data & 0x0FFF) / 500.0; 
         return appId;
       case 0x0010:
         altBD = (int16_t)data;

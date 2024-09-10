@@ -1,10 +1,24 @@
 /*
-  FrSky telemetry class for Teensy 3.x and 328P based boards (e.g. Pro Mini, Nano, Uno)
-  (c) Pawelsky 20160324
+  FrSky telemetry class for Teensy 3.x/4.0/LC, ESP8266, ATmega2560 (Mega) and ATmega328P based boards (e.g. Pro Mini, Nano, Uno)
+  (c) Pawelsky 202000503
   Not for commercial use
 */
 
+#include "FrSkySportPollingSimple.h"
 #include "FrSkySportTelemetry.h"
+
+// This constructor is obsolete and kept for backward compatibility only
+FrSkySportTelemetry::FrSkySportTelemetry(bool polling)
+{
+  if(polling == true) FrSkySportTelemetry(new FrSkySportPollingSimple());
+  else FrSkySportTelemetry();
+}
+
+FrSkySportTelemetry::FrSkySportTelemetry(FrSkySportPolling *polling)
+{
+  pollingClass = polling;
+  prevData = FrSkySportSensor::ID_IGNORE;
+}
 
 void FrSkySportTelemetry::begin(FrSkySportSingleWireSerial::SerialId id,
                                 FrSkySportSensor* sensor1,  FrSkySportSensor* sensor2,  FrSkySportSensor* sensor3,
@@ -54,23 +68,55 @@ void FrSkySportTelemetry::begin(FrSkySportSingleWireSerial::SerialId id,
     if(sensors[sensorCount] == NULL) break;
   }
 
-  FrSkySportTelemetry::serial.begin(id, false);
+  FrSkySportTelemetry::serial.begin(id);
 }
 
-void FrSkySportTelemetry::send()
+uint16_t FrSkySportTelemetry::send()
 {
-  if((serial.port != NULL) && (serial.port->available()))
+  uint16_t dataId = SENSOR_NO_DATA_ID;
+  if(serial.port != NULL)
   {
-    uint8_t data = serial.port->read();
-    if(prevData == FRSKY_TELEMETRY_START_FRAME)
+    uint8_t polledId = FrSkySportSensor::ID_IGNORE;
+    uint32_t now = millis();
+
+    if(pollingClass != NULL)
     {
-      uint32_t now = millis();
+      polledId = pollingClass->pollData(serial, now);
+      if(polledId != FrSkySportSensor::ID_IGNORE) prevData = polledId;
+    }
+
+    if(serial.port->available())
+    {
+      uint8_t data = serial.port->read();
+      if(pollingClass != NULL)
+      {
+        // If an external sensor is responding (with actual data or empty frame) and polling is enabled, notify the polling class
+        if((prevData != FrSkySportSensor::ID_IGNORE) && ((data == FRSKY_SENSOR_DATA_FRAME) || (data == FRSKY_SENSOR_EMPTY_FRAME))) pollingClass->sensorActive((FrSkySportSensor::SensorId)prevData);
+        prevData = FrSkySportSensor::ID_IGNORE;
+      }
+      else
+      {
+        if(prevData == FRSKY_TELEMETRY_START_FRAME) polledId = data;
+        prevData = data;
+      }
+    }
+
+    if(polledId != FrSkySportSensor::ID_IGNORE) 
+    {
       // Send the actual data
       for(uint8_t i = 0; i < sensorCount; i++)
       {
-        sensors[i]->send(serial, data, now);
+        dataId = sensors[i]->send(serial, polledId, now);
+        // If an internal sensor is is responding (with actual data or empty frame) and polling is enabled, notify the polling class
+        if((pollingClass != NULL) && (dataId != SENSOR_NO_DATA_ID)) pollingClass->sensorActive((FrSkySportSensor::SensorId)polledId);
       }
     }
-    prevData = data;
   }
+  if(dataId == SENSOR_EMPTY_DATA_ID) dataId = SENSOR_NO_DATA_ID; // If empty frame was sent we return SENSOR_NO_DATA_ID as no actual data has been sent
+  return dataId;
+}
+
+void FrSkySportTelemetry::setData(uint8_t rssi, float rxBatt)
+{
+  if (pollingClass != NULL) pollingClass->setData(rssi, rxBatt);
 }

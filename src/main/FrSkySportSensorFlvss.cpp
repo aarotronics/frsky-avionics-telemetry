@@ -1,6 +1,6 @@
 /*
-  FrSky FLVSS LiPo voltage sensor class for Teensy 3.x and 328P based boards (e.g. Pro Mini, Nano, Uno)
-  (c) Pawelsky 20151108
+  FrSky FLVSS/MLVSS LiPo voltage sensor class for Teensy 3.x/4.0/LC, ESP8266, ATmega2560 (Mega) and ATmega328P based boards (e.g. Pro Mini, Nano, Uno)
+  (c) Pawelsky 202000503
   Not for commercial use
 */
 
@@ -53,31 +53,35 @@ void FrSkySportSensorFlvss::setData(float cell1, float cell2, float cell3, float
   if(numCells > 4) cellData3 = setCellData(numCells, 4, cell5, cell6); else cellData3 = 0;
 }
 
-void FrSkySportSensorFlvss::send(FrSkySportSingleWireSerial& serial, uint8_t id, uint32_t now)
+uint16_t FrSkySportSensorFlvss::send(FrSkySportSingleWireSerial& serial, uint8_t id, uint32_t now)
 {
+  uint16_t dataId = SENSOR_NO_DATA_ID;
   if(sensorId == id)
   {
+    dataId = FLVSS_CELL_DATA_ID;
     if(now > cellDataTime)
     {
       cellDataTime = now + FLVSS_CELL_DATA_PERIOD;
       switch(sensorDataIdx)
       {
         case 0:
-          serial.sendData(FLVSS_CELL_DATA_ID, cellData1); if(cellData2 != 0) sensorDataIdx = 1; else sensorDataIdx = 0; 
+          serial.sendData(dataId, cellData1); if(cellData2 != 0) sensorDataIdx = 1; else sensorDataIdx = 0; 
           break;
         case 1:
-          serial.sendData(FLVSS_CELL_DATA_ID, cellData2); if(cellData3 != 0) sensorDataIdx = 2; else sensorDataIdx = 0; 
+          serial.sendData(dataId, cellData2); if(cellData3 != 0) sensorDataIdx = 2; else sensorDataIdx = 0; 
           break;
         case 2:
-          serial.sendData(FLVSS_CELL_DATA_ID, cellData3); sensorDataIdx = 0;
+          serial.sendData(dataId, cellData3); sensorDataIdx = 0;
           break;
       }
     }
     else
     {
-      serial.sendEmpty(FLVSS_CELL_DATA_ID);
+      serial.sendEmpty(dataId);
+      dataId = SENSOR_EMPTY_DATA_ID;
     }
   }
+  return dataId;
 }
 
 uint16_t FrSkySportSensorFlvss::decodeData(uint8_t id, uint16_t appId, uint32_t data)

@@ -31,15 +31,16 @@
 #include "FrSkySportSensorGps.h"
 #include "FrSkySportSensorRpm.h"
 #include "FrSkySportTelemetry.h"
+#include "FrSkySportPollingDynamic.h"
 
 // ====== START USER CONFIG ======
-#define BATT_PER_CELL               // Show battery voltage per cell instead of total voltage
 //#define FROM_SEA_LEVEL              // Show altitude (from sea level, QNE) instead of height (from ground, QFE)
 //#define ALTITUDE_IN_FEET            // Show altitude/height in feet instead of meters
-#define MAX_CELL_VOLTS        4.20  // V
-#define MIN_CELL_VOLTS        3.30  // V
-#define DIVIDER_UPPER_R       6.80  // KOhm
-#define DIVIDER_LOWER_R       0.47  // KOhm
+#define BATT_PER_CELL               // Show battery voltage per cell instead of total voltage
+#define MAX_CELL_VOLTS        4200  // mV
+#define MIN_CELL_VOLTS        3300  // mV
+#define DIVIDER_UPPER_R       6800  // Ohm
+#define DIVIDER_LOWER_R       470   // Ohm
 #define VOLTAGE_RATE          1.0
 #define VOLTAGE_OFFSET        0.0
 
@@ -50,13 +51,13 @@
 #define EMA_ALPHA_BAT         0.10  // Amount of the new value over 1.0 that will be added in each filter loop
 #define EMA_PERIOD_BAT        20    // ms filter loop time
 #define MAX_ADC               1023  // 10 bit ADC
-#define ADC_AREF              1.10  // V from ATMEGA328P internal 1V1 AREF
+#define ADC_AREF              1100  // mV from ATMEGA328P internal 1V1 AREF
 #define GPS_SERIAL            Serial
-//#define VSPD_SAMPLES          40
-//#define VSPD_MAX_SAMPLES      50
+#define VSPD_SAMPLES          40
+#define VSPD_MAX_SAMPLES      50
 #define EMA_ALPHA_VARIO       0.25
 #define EMA_PERIOD_VARIO      50
-#define SMARTPORT_UPDATE      10000     // FrSky SmartPort update period (us)
+#define SMARTPORT_UPDATE      2000      // FrSky SmartPort update period (us)
 #define SEA_PRESSURE          101325    // Default sea pressure for QNE operation (Pa)
 
 
@@ -66,14 +67,15 @@ FrSkySportSensorFcs     fcsFrSky;
 FrSkySportSensorGps     gpsFrSky;
 FrSkySportSensorVario   varioFrSky;
 FrSkySportSensorRpm     rpmFrSky;
-FrSkySportTelemetry     telemetry;
+FrSkySportTelemetry     telemetry(new FrSkySportPollingDynamic());
 
 
 uint8_t cellNum;
+float adcToVoltsConverionRate;
 float filteredADC = 0, batteryVoltage, cellVoltage, batteryPercent;
 uint32_t lastBatFilterTime = 0, lastVarioFilterTime = 0;
-int hdopValue;
-float gpsLatitude, gpsLongitude, gpsSpeed, gpsCourse, altitudeGPS;
+int gpsHDOP;
+float gpsLatitude, gpsLongitude, gpsSpeed, gpsCourse, gpsAltitude;
 float actualPressure, referencePressure, baroAltitude, instantVSpd, filteredVSpd, baroTemp;
 float lastBaroAltitude = 0;
 float tempo = millis();
@@ -111,12 +113,13 @@ void setup() {
 #endif
 
   delay(1000);
-  batteryVoltage = (((((float)analogRead(VOLTAGE_PIN) / (float)MAX_ADC * ADC_AREF) * ((float)DIVIDER_UPPER_R + (float)DIVIDER_LOWER_R)) / (float)DIVIDER_LOWER_R) * VOLTAGE_RATE) + VOLTAGE_OFFSET;
-  if (batteryVoltage <= 17.50) // Get number of cells from total voltage
+  adcToVoltsConverionRate = ((float)ADC_AREF / (float)MAX_ADC) * (((float)DIVIDER_UPPER_R + (float)DIVIDER_LOWER_R) / (float)DIVIDER_LOWER_R);
+  batteryVoltage = (analogRead(VOLTAGE_PIN) * adcToVoltsConverionRate * VOLTAGE_RATE) + VOLTAGE_OFFSET;
+  if (batteryVoltage <= 17500) // Get number of cells from total voltage
     cellNum = 4;
-  if (batteryVoltage <= 12.70)
+  if (batteryVoltage <= 12700)
     cellNum = 3;
-  if (batteryVoltage <= 8.50)
+  if (batteryVoltage <= 8500)
     cellNum = 2;
 
   Timer1.initialize(SMARTPORT_UPDATE);    // Interruption used to send data to FrSky SmartPort
@@ -131,15 +134,15 @@ void loop() {
   // Voltage
   if (millis() >= (lastBatFilterTime + EMA_PERIOD_BAT)) {
     filteredADC = (analogRead(VOLTAGE_PIN) * EMA_ALPHA_BAT) + (filteredADC * (1.0 - EMA_ALPHA_BAT));
-    batteryVoltage = ((((filteredADC / (float)MAX_ADC * ADC_AREF) * ((float)DIVIDER_UPPER_R + (float)DIVIDER_LOWER_R)) / (float)DIVIDER_LOWER_R) * VOLTAGE_RATE) + VOLTAGE_OFFSET;
+    batteryVoltage = (filteredADC * adcToVoltsConverionRate * VOLTAGE_RATE) + VOLTAGE_OFFSET;
     cellVoltage = batteryVoltage / (float)cellNum;
-    batteryPercent = constrain((((cellVoltage - MIN_CELL_VOLTS) / (MAX_CELL_VOLTS - MIN_CELL_VOLTS)) * 100.0), 0.0, 100.0);
+    batteryPercent = constrain(((cellVoltage - MIN_CELL_VOLTS) * 100.0 / (MAX_CELL_VOLTS - MIN_CELL_VOLTS)) , 0.0, 100.0);
 #ifdef BATT_PER_CELL
-    fcsFrSky.setData(0, cellVoltage);
+    fcsFrSky.setData(0, (float)cellVoltage / 1000.0);
 #else
-    fcsFrSky.setData(0, batteryVoltage);
+    fcsFrSky.setData(0, (float)batteryVoltage / 1000.0);
 #endif
-    rpmFrSky.setData(hdopValue, baroTemp, batteryPercent);
+    rpmFrSky.setData(gpsHDOP, baroTemp, batteryPercent);
     lastBatFilterTime = millis();
   }
 
@@ -153,9 +156,11 @@ void loop() {
     if (gpsSensor.location.isValid()) {
       gpsLatitude = gpsSensor.location.lat();
       gpsLongitude = gpsSensor.location.lng();
+      gpsHDOP = gpsSensor.hdop.hdop();
     } else {
       gpsLatitude = 0.0000000;
       gpsLongitude = 0.0000000;
+      gpsHDOP = 20;
     }
 
     if (gpsSensor.speed.isValid()) {
@@ -165,9 +170,9 @@ void loop() {
     }
 
     if (gpsSensor.altitude.isValid()) {
-      altitudeGPS = gpsSensor.altitude.meters();
+      gpsAltitude = gpsSensor.altitude.meters();
     } else {
-      altitudeGPS = 0.0;
+      gpsAltitude = 0.0;
     }
 
     if (gpsSensor.course.isValid()) {
@@ -176,53 +181,54 @@ void loop() {
       gpsCourse = 0.0;
     }
 
-    hdopValue = gpsSensor.hdop.hdop();
-    gpsFrSky.setData(gpsLatitude, gpsLongitude, altitudeGPS, gpsSpeed, gpsCourse, 0, 0, 0, 0, 0, 0);
+    gpsFrSky.setData(gpsLatitude, gpsLongitude, gpsAltitude, gpsSpeed, gpsCourse, 0, 0, 0, 0, 0, 0);
   }
 
 
   // Barometer
-  if (millis() >= (lastVarioFilterTime + EMA_PERIOD_VARIO)) {
-    actualPressure = baroSensor.readPressure();
-    baroTemp = baroSensor.readTemperature();
-    baroAltitude = 44330 * (1.0 - pow(actualPressure / referencePressure, 0.190284));
-    instantVSpd = (baroAltitude - lastBaroAltitude) * 1000 / (millis() - lastVarioFilterTime);
-    filteredVSpd = (instantVSpd * EMA_ALPHA_VARIO) + (filteredVSpd * (1.0 - EMA_ALPHA_VARIO));
-    lastBaroAltitude = baroAltitude;
+  //if (millis() >= (lastVarioFilterTime + EMA_PERIOD_VARIO)) {
+  actualPressure = baroSensor.readPressure();
+  baroTemp = baroSensor.readTemperature();
+  baroAltitude = 44330 * (1.0 - pow(actualPressure / referencePressure, 0.190284));
+  //instantVSpd = (baroAltitude - lastBaroAltitude) * 1000 / (millis() - lastVarioFilterTime);
+  //filteredVSpd = (instantVSpd * EMA_ALPHA_VARIO) + (filteredVSpd * (1.0 - EMA_ALPHA_VARIO));
+  //instantVSpd = filteredVSpd;
+  //lastBaroAltitude = baroAltitude;
 
-    /*
-      tempo = millis();
-      N1 = 0;
-      N2 = 0;
-      N3 = 0;
-      D1 = 0;
-      D2 = 0;
-      instantVSpd = 0;
-      for (int j = 0; j < VSPD_MAX_SAMPLES; j++) {
-        alt[j] = alt[(j + 1)];
-        tim[j] = tim[(j + 1)];
-      }
-      alt[VSPD_MAX_SAMPLES] = baroAltitude;
-      tim[VSPD_MAX_SAMPLES] = tempo;
-      float stime = tim[VSPD_MAX_SAMPLES - VSPD_SAMPLES];
-      for (int k = (VSPD_MAX_SAMPLES - VSPD_SAMPLES); k < VSPD_MAX_SAMPLES; k++) {
-        N1 += (tim[k] - stime) * alt[k];
-        N2 += (tim[k] - stime);
-        N3 += (alt[k]);
-        D1 += (tim[k] - stime) * (tim[k] - stime);
-        D2 += (tim[k] - stime);
-      }
-      instantVSpd = 1000 * ((VSPD_SAMPLES * N1) - N2 * N3) / (VSPD_SAMPLES * D1 - D2 * D2);
-    */
+
+  // Vario algorithm derived from https://www.instructables.com/DIY-Arduino-Variometer-for-Paragliding/
+  tempo = millis();
+  N1 = 0;
+  N2 = 0;
+  N3 = 0;
+  D1 = 0;
+  D2 = 0;
+  instantVSpd = 0;
+  for (int j = 0; j < VSPD_MAX_SAMPLES; j++) {
+    alt[j] = alt[(j + 1)];
+    tim[j] = tim[(j + 1)];
+  }
+  alt[VSPD_MAX_SAMPLES] = baroAltitude;
+  tim[VSPD_MAX_SAMPLES] = tempo;
+  float stime = tim[VSPD_MAX_SAMPLES - VSPD_SAMPLES];
+  for (int k = (VSPD_MAX_SAMPLES - VSPD_SAMPLES); k < VSPD_MAX_SAMPLES; k++) {
+    N1 += (tim[k] - stime) * alt[k];
+    N2 += (tim[k] - stime);
+    N3 += (alt[k]);
+    D1 += (tim[k] - stime) * (tim[k] - stime);
+    D2 += (tim[k] - stime);
+  }
+  instantVSpd = 1000 * ((VSPD_SAMPLES * N1) - N2 * N3) / (VSPD_SAMPLES * D1 - D2 * D2);
+
 
 #ifdef ALTITUDE_IN_FEET
-    baroAltitude *= 3.2808;    // Convert altitude from m to ft
-    instantVSpd *= 196.8504; // Convert VSpd from m/s to ft/min
+  baroAltitude *= 3.2808;    // Convert altitude from m to ft
+  instantVSpd *= 196.8504; // Convert VSpd from m/s to ft/min
 #endif
 
-    varioFrSky.setData(baroAltitude, instantVSpd);
-    lastVarioFilterTime = millis();
-  }
+  varioFrSky.setData(baroAltitude, instantVSpd);
+  lastVarioFilterTime = millis();
+  //}
 
 }
 

@@ -1,6 +1,6 @@
 /*
-  FrSky GPS sensor class for Teensy 3.x and 328P based boards (e.g. Pro Mini, Nano, Uno)
-  (c) Pawelsky 20151018
+  FrSky GPS sensor class for Teensy 3.x/4.0/LC and 328P, ESP8266, ATmega2560 (Mega) and ATmega328P based boards (e.g. Pro Mini, Nano, Uno)
+  (c) Pawelsky 202000503
   Not for commercial use
 */
 
@@ -41,93 +41,109 @@ uint32_t FrSkySportSensorGps::setDateTime(uint8_t yearOrHour, uint8_t monthOrMin
   return data;
 }
 
-void FrSkySportSensorGps::send(FrSkySportSingleWireSerial& serial, uint8_t id, uint32_t now)
+uint16_t FrSkySportSensorGps::send(FrSkySportSingleWireSerial& serial, uint8_t id, uint32_t now)
 {
+  uint16_t dataId = SENSOR_NO_DATA_ID;
   if(sensorId == id)
   {
     switch(sensorDataIdx)
     {
       case 0:
+        dataId = GPS_LAT_LON_DATA_ID;
         if(now > latTime)
         {
           latTime = now + GPS_LAT_LON_DATA_PERIOD;
-          serial.sendData(GPS_LAT_LON_DATA_ID, latData);
+          serial.sendData(dataId, latData);
         }
         else
         {
-          serial.sendEmpty(GPS_LAT_LON_DATA_ID);
+          serial.sendEmpty(dataId);
+          dataId = SENSOR_EMPTY_DATA_ID;
         }
         break;
       case 1:
+        dataId = GPS_LAT_LON_DATA_ID;
         if(now > lonTime)
         {
           lonTime = now + GPS_LAT_LON_DATA_PERIOD;
-          serial.sendData(GPS_LAT_LON_DATA_ID, lonData);
+          serial.sendData(dataId, lonData);
         }
         else
         {
-          serial.sendEmpty(GPS_LAT_LON_DATA_ID);
+          serial.sendEmpty(dataId);
+          dataId = SENSOR_EMPTY_DATA_ID;
         }
         break;
       case 2:
+        dataId = GPS_ALT_DATA_ID;
         if(now > altTime)
         {
           altTime = now + GPS_ALT_DATA_PERIOD;
-          serial.sendData(GPS_ALT_DATA_ID, altData);
+          serial.sendData(dataId, altData);
         }
         else
         {
-          serial.sendEmpty(GPS_ALT_DATA_ID);
+          serial.sendEmpty(dataId);
+          dataId = SENSOR_EMPTY_DATA_ID;
         }
         break;
       case 3:
+        dataId = GPS_SPEED_DATA_ID;
         if(now > speedTime)
         {
           speedTime = now + GPS_SPEED_DATA_PERIOD;
-          serial.sendData(GPS_SPEED_DATA_ID, speedData);
+          serial.sendData(dataId, speedData);
         }
         else
         {
-          serial.sendEmpty(GPS_SPEED_DATA_ID);
+          serial.sendEmpty(dataId);
+          dataId = SENSOR_EMPTY_DATA_ID;
         }
         break;
       case 4:
+        dataId = GPS_COG_DATA_ID;
         if(now > cogTime)
         {
           cogTime = now + GPS_COG_DATA_PERIOD;
-          serial.sendData(GPS_COG_DATA_ID, cogData);
+          serial.sendData(dataId, cogData);
         }
         else
         {
-          serial.sendEmpty(GPS_COG_DATA_ID);
+          serial.sendEmpty(dataId);
+          dataId = SENSOR_EMPTY_DATA_ID;
         }
         break;
       case 5:
+        dataId = GPS_DATE_TIME_DATA_ID;
         if(now > dateTime)
         {
           dateTime = now + GPS_DATE_TIME_DATA_PERIOD;
-          serial.sendData(GPS_DATE_TIME_DATA_ID, dateData);
+          serial.sendData(dataId, dateData);
         }
         else
         {
-          serial.sendEmpty(GPS_DATE_TIME_DATA_ID);
+          serial.sendEmpty(dataId);
+          dataId = SENSOR_EMPTY_DATA_ID;
         }
         break;
       case 6:
+        dataId = GPS_DATE_TIME_DATA_ID;
         if(now > timeTime)
         {
           timeTime = now + GPS_DATE_TIME_DATA_PERIOD;
-          serial.sendData(GPS_DATE_TIME_DATA_ID, timeData);
+          serial.sendData(dataId, timeData);
         }
         else
         {
-          serial.sendEmpty(GPS_DATE_TIME_DATA_ID);
+          serial.sendEmpty(dataId);
+          dataId = SENSOR_EMPTY_DATA_ID;
         }
         break;
     }
     sensorDataIdx++;
     if(sensorDataIdx >= GPS_DATA_COUNT) sensorDataIdx = 0;
   }
+  return dataId;
 }
 
 uint16_t FrSkySportSensorGps::decodeData(uint8_t id, uint16_t appId, uint32_t data)

@@ -1,6 +1,6 @@
 /*
-  FrSky FCS-40A/FCS-150A current sensor class for Teensy 3.x and 328P based boards (e.g. Pro Mini, Nano, Uno)
-  (c) Pawelsky 20151108
+  FrSky FCS-40A/FCS-150A current sensor class for Teensy 3.x/4.0/LC, ESP8266, ATmega2560 (Mega) and ATmega328P based boards (e.g. Pro Mini, Nano, Uno)
+  (c) Pawelsky 202000503
   Not for commercial use
 */
 
@@ -22,7 +22,7 @@ class FrSkySportSensorFcs : public FrSkySportSensor
   public:
     FrSkySportSensorFcs(SensorId id = FCS_DEFAULT_ID);
     void setData(float current, float voltage);
-    virtual void send(FrSkySportSingleWireSerial& serial, uint8_t id, uint32_t now);
+    virtual uint16_t send(FrSkySportSingleWireSerial& serial, uint8_t id, uint32_t now);
     virtual uint16_t decodeData(uint8_t id, uint16_t appId, uint32_t data);
     float getCurrent();
     float getVoltage();

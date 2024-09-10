@@ -1,6 +1,6 @@
 /*
-  FrSky GPS sensor class for Teensy 3.x and 328P based boards (e.g. Pro Mini, Nano, Uno)
-  (c) Pawelsky 20151018
+  FrSky GPS sensor class for Teensy 3.x/4.0/LC, ESP8266, ATmega2560 (Mega) and ATmega328P based boards (e.g. Pro Mini, Nano, Uno)
+  (c) Pawelsky 202000503
   Not for commercial use
 */
 
@@ -29,7 +29,7 @@ class FrSkySportSensorGps : public FrSkySportSensor
   public:
     FrSkySportSensorGps(SensorId id = GPS_DEFAULT_ID);
     void setData(float lat, float lon, float alt, float speed, float cog, uint8_t year, uint8_t month, uint8_t day, uint8_t hour, uint8_t minute, uint8_t second);
-    virtual void send(FrSkySportSingleWireSerial& serial, uint8_t id, uint32_t now);
+    virtual uint16_t send(FrSkySportSingleWireSerial& serial, uint8_t id, uint32_t now);
     virtual uint16_t decodeData(uint8_t id, uint16_t appId, uint32_t data);
     float getLat();
     float getLon();

@@ -1,10 +1,23 @@
 /*
-  FrSky telemetry decoder class for Teensy 3.x and 328P based boards (e.g. Pro Mini, Nano, Uno)
-  (c) Pawelsky 20160324
+  FrSky telemetry decoder class for Teensy 3.x/4.0/LC, ESP8266, ATmega2560 (Mega) and ATmega328P based boards (e.g. Pro Mini, Nano, Uno)
+  (c) Pawelsky 20200503
   Not for commercial use
 */
 
+#include "FrSkySportPollingSimple.h"
 #include "FrSkySportDecoder.h"
+
+// This constructor is obsolete and kept for backward compatibility only
+FrSkySportDecoder::FrSkySportDecoder(bool polling)
+{
+  if(polling == true) FrSkySportDecoder(new FrSkySportPollingSimple());
+  else FrSkySportDecoder();
+}
+
+FrSkySportDecoder::FrSkySportDecoder(FrSkySportPolling *polling)
+{
+  pollingClass = polling;
+}
 
 void FrSkySportDecoder::begin(FrSkySportSingleWireSerial::SerialId id,
                                 FrSkySportSensor* sensor1,  FrSkySportSensor* sensor2,  FrSkySportSensor* sensor3,
@@ -57,42 +70,53 @@ void FrSkySportDecoder::begin(FrSkySportSingleWireSerial::SerialId id,
   state = START_FRAME;
   hasStuffing = false; 
 
-  FrSkySportDecoder::serial.begin(id, true);
+  FrSkySportDecoder::serial.begin(id);
 }
 
 uint16_t FrSkySportDecoder::decode()
 {
   uint16_t result = SENSOR_NO_DATA_ID;
-  if((serial.port != NULL) && (serial.port->available()))
+  if(serial.port != NULL)
   {
-    uint8_t byte = serial.port->read();
-    if(byte == FRSKY_TELEMETRY_START_FRAME) { state = SENSOR_ID; }                               // Regardles of the state restart state machine when start frame found
-    else
+    if(pollingClass != NULL)
     {
-      if(hasStuffing == true) { byte ^= 0x20; hasStuffing = false; }                             // Xor next byte with 0x20 to remove stuffing
-      if((byte == FRSKY_STUFFING) && (state > DATA_FRAME) && (state <= CRC)) hasStuffing = true; // Skip stuffing byte in data and mark to xor next byte with 0x20
-      else if (state == SENSOR_ID) { id = byte; state = DATA_FRAME; }                            // Store the sensor ID, start sarching for data frame
-      else if((state == DATA_FRAME) && (byte == FRSKY_SENSOR_DATA_FRAME)) 
-      {
-        crc = byte;                                                                              // Data frame found, initialize the CRC and start collecting APP ID
-        state = APP_ID_BYTE_1;
-      }
-      else if(state == APP_ID_BYTE_1) { ((uint8_t*)&appId)[0] = byte; state = APP_ID_BYTE_2; }   // APP ID first byte collected, look for second byte
-      else if(state == APP_ID_BYTE_2) { ((uint8_t*)&appId)[1] = byte; state = DATA_BYTE_1; }     // APP ID second byte collected, store APP ID and start looking for DATA
-      else if(state == DATA_BYTE_1) { ((uint8_t*)&data)[0] = byte; state = DATA_BYTE_2; }        // DATA first byte collected, look for second byte
-      else if(state == DATA_BYTE_2) { ((uint8_t*)&data)[1] = byte; state = DATA_BYTE_3; }        // DATA second byte collected, look for third byte
-      else if(state == DATA_BYTE_3) { ((uint8_t*)&data)[2] = byte; state = DATA_BYTE_4; }        // DATA third byte collected, look for fourth byte
-      else if(state == DATA_BYTE_4) { ((uint8_t*)&data)[3] = byte; state = CRC; }                // DATA fourth byte collected, store DATA and look for CRC
-      else if((state == CRC) && (byte == (0xFF - crc)))                                          // read CRC and compare with calculated one. 
-      {                                                                                          // If OK, send data to registered sensors for decoding and restart the state machine.
-        hasStuffing = false; 
-        state = START_FRAME;
-        for(uint8_t i = 0; i < sensorCount; i++) { result = sensors[i]->decodeData(id, appId, data); if(result != SENSOR_NO_DATA_ID) break; }
-      }
-      else { hasStuffing = false; state = START_FRAME; }
+      uint32_t now = millis();
+      FrSkySportSensor::SensorId polledId = pollingClass->pollData(serial, now);
+      if(polledId != FrSkySportSensor::ID_IGNORE) { state = DATA_FRAME; id = polledId; }
+    }
 
-      // Update CRC value
-      if((state > APP_ID_BYTE_1) && (state <= CRC) && (hasStuffing == false)) { crc += byte; crc += crc >> 8; crc &= 0x00ff; }
+    if(serial.port->available())
+    {
+      uint8_t byte = serial.port->read();
+      if(byte == FRSKY_TELEMETRY_START_FRAME) { hasStuffing = false; state = SENSOR_ID; }             // Regardles of the state restart state machine when start frame found
+      else if((byte == FRSKY_STUFFING) && (state > DATA_FRAME) && (state <= CRC_BYTE)) hasStuffing = true; // Skip stuffing byte in data and mark to xor next byte with 0x20
+      else
+      {
+        if(hasStuffing == true) { byte ^= 0x20; hasStuffing = false; }                                // Xor next byte with 0x20 to remove stuffing
+        if (state == SENSOR_ID) { id = byte; state = DATA_FRAME; }                                    // Store the sensor ID, start sarching for data frame
+        else if((state == DATA_FRAME) && ((byte == FRSKY_SENSOR_DATA_FRAME) || (byte == FRSKY_SENSOR_DATA_FRAME))) 
+        {
+          if(pollingClass != NULL) pollingClass->sensorActive((FrSkySportSensor::SensorId)id);        // Sensor has responded, if polling is enabled notify the polling class
+          if(byte == FRSKY_SENSOR_DATA_FRAME) { crc = byte; state = APP_ID_BYTE_1; }                  // If data frame found, initialize the CRC and start collecting APP ID
+          else { hasStuffing = false; state = START_FRAME; }                                          // If empty frame found, skip the frame and start looking for next one
+        }
+        else if(state == APP_ID_BYTE_1) { ((uint8_t*)&appId)[0] = byte; state = APP_ID_BYTE_2; }      // APP ID first byte collected, look for second byte
+        else if(state == APP_ID_BYTE_2) { ((uint8_t*)&appId)[1] = byte; state = DATA_BYTE_1; }        // APP ID second byte collected, store APP ID and start looking for DATA
+        else if(state == DATA_BYTE_1) { ((uint8_t*)&data)[0] = byte; state = DATA_BYTE_2; }           // DATA first byte collected, look for second byte
+        else if(state == DATA_BYTE_2) { ((uint8_t*)&data)[1] = byte; state = DATA_BYTE_3; }           // DATA second byte collected, look for third byte
+        else if(state == DATA_BYTE_3) { ((uint8_t*)&data)[2] = byte; state = DATA_BYTE_4; }           // DATA third byte collected, look for fourth byte
+        else if(state == DATA_BYTE_4) { ((uint8_t*)&data)[3] = byte; state = CRC_BYTE; }              // DATA fourth byte collected, store DATA and look for CRC
+        else if((state == CRC_BYTE) && (byte == (0xFF - crc)))                                        // read CRC and compare with calculated one. 
+        {                                                                                             // If OK, send data to registered sensors for decoding and restart the state machine.
+          hasStuffing = false; 
+          state = START_FRAME;
+          for(uint8_t i = 0; i < sensorCount; i++) { result = sensors[i]->decodeData(id, appId, data); if(result != SENSOR_NO_DATA_ID) break; }
+        }
+        else { hasStuffing = false; state = START_FRAME; }
+
+        // Update CRC value
+        if((state > APP_ID_BYTE_1) && (state <= CRC_BYTE) && (hasStuffing == false)) { crc += byte; crc += crc >> 8; crc &= 0x00ff; }
+      }
     }
   }
   return result;

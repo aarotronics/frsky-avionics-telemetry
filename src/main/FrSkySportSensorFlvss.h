@@ -1,6 +1,6 @@
 /*
-  FrSky FLVSS LiPo voltage sensor class for Teensy 3.x and 328P based boards (e.g. Pro Mini, Nano, Uno)
-  (c) Pawelsky 20151018
+  FrSky FLVSS/MLVSS LiPo voltage sensor class for Teensy 3.x/4.0/LC, ESP8266, ATmega2560 (Mega) and ATmega328P based boards (e.g. Pro Mini, Nano, Uno)
+  (c) Pawelsky 202000503
   Not for commercial use
 */
 
@@ -20,7 +20,7 @@ class FrSkySportSensorFlvss : public FrSkySportSensor
   public:
     FrSkySportSensorFlvss(SensorId id = FLVSS_DEFAULT_ID);
     void setData(float cell1, float cell2 = 0.0, float cell3 = 0.0, float cell4 = 0.0, float cell5 = 0.0, float cell6 = 0.0);
-    virtual void send(FrSkySportSingleWireSerial& serial, uint8_t id, uint32_t now);
+    virtual uint16_t send(FrSkySportSingleWireSerial& serial, uint8_t id, uint32_t now);
     virtual uint16_t decodeData(uint8_t id, uint16_t appId, uint32_t data);
     float getCell1();
     float getCell2();
