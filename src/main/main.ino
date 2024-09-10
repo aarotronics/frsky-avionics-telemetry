@@ -49,14 +49,14 @@
 #define LED_PIN               13    // Status LED, will turn ON after start-up when system is ready to go
 #define VOLTAGE_PIN           A0    // Analog pin where voltage sensor is connected
 #define EMA_ALPHA_BAT         0.10  // Amount of the new value over 1.0 that will be added in each filter loop
-#define EMA_PERIOD_BAT        20    // ms filter loop time
+#define EMA_PERIOD_BAT        50    // ms filter loop time
 #define MAX_ADC               1023  // 10 bit ADC
 #define ADC_AREF              1100  // mV from ATMEGA328P internal 1V1 AREF
 #define GPS_SERIAL            Serial
 #define VSPD_SAMPLES          40
 #define VSPD_MAX_SAMPLES      50
 #define EMA_ALPHA_VARIO       0.25
-#define EMA_PERIOD_VARIO      50
+#define EMA_PERIOD_VARIO      20
 #define SMARTPORT_UPDATE      2000      // FrSky SmartPort update period (us)
 #define SEA_PRESSURE          101325    // Default sea pressure for QNE operation (Pa)
 
@@ -186,49 +186,49 @@ void loop() {
 
 
   // Barometer
-  //if (millis() >= (lastVarioFilterTime + EMA_PERIOD_VARIO)) {
-  actualPressure = baroSensor.readPressure();
-  baroTemp = baroSensor.readTemperature();
-  baroAltitude = 44330 * (1.0 - pow(actualPressure / referencePressure, 0.190284));
-  //instantVSpd = (baroAltitude - lastBaroAltitude) * 1000 / (millis() - lastVarioFilterTime);
-  //filteredVSpd = (instantVSpd * EMA_ALPHA_VARIO) + (filteredVSpd * (1.0 - EMA_ALPHA_VARIO));
-  //instantVSpd = filteredVSpd;
-  //lastBaroAltitude = baroAltitude;
+  if (millis() >= (lastVarioFilterTime + EMA_PERIOD_VARIO)) {
+    actualPressure = baroSensor.readPressure();
+    baroTemp = baroSensor.readTemperature();
+    baroAltitude = 44330 * (1.0 - pow(actualPressure / referencePressure, 0.190284));
+    //instantVSpd = (baroAltitude - lastBaroAltitude) * 1000 / (millis() - lastVarioFilterTime);
+    //filteredVSpd = (instantVSpd * EMA_ALPHA_VARIO) + (filteredVSpd * (1.0 - EMA_ALPHA_VARIO));
+    //instantVSpd = filteredVSpd;
+    //lastBaroAltitude = baroAltitude;
 
 
-  // Vario algorithm derived from https://www.instructables.com/DIY-Arduino-Variometer-for-Paragliding/
-  tempo = millis();
-  N1 = 0;
-  N2 = 0;
-  N3 = 0;
-  D1 = 0;
-  D2 = 0;
-  instantVSpd = 0;
-  for (int j = 0; j < VSPD_MAX_SAMPLES; j++) {
-    alt[j] = alt[(j + 1)];
-    tim[j] = tim[(j + 1)];
-  }
-  alt[VSPD_MAX_SAMPLES] = baroAltitude;
-  tim[VSPD_MAX_SAMPLES] = tempo;
-  float stime = tim[VSPD_MAX_SAMPLES - VSPD_SAMPLES];
-  for (int k = (VSPD_MAX_SAMPLES - VSPD_SAMPLES); k < VSPD_MAX_SAMPLES; k++) {
-    N1 += (tim[k] - stime) * alt[k];
-    N2 += (tim[k] - stime);
-    N3 += (alt[k]);
-    D1 += (tim[k] - stime) * (tim[k] - stime);
-    D2 += (tim[k] - stime);
-  }
-  instantVSpd = 1000 * ((VSPD_SAMPLES * N1) - N2 * N3) / (VSPD_SAMPLES * D1 - D2 * D2);
+    // Vario algorithm derived from https://www.instructables.com/DIY-Arduino-Variometer-for-Paragliding/
+    tempo = millis();
+    N1 = 0;
+    N2 = 0;
+    N3 = 0;
+    D1 = 0;
+    D2 = 0;
+    instantVSpd = 0;
+    for (int j = 0; j < VSPD_MAX_SAMPLES; j++) {
+      alt[j] = alt[(j + 1)];
+      tim[j] = tim[(j + 1)];
+    }
+    alt[VSPD_MAX_SAMPLES] = baroAltitude;
+    tim[VSPD_MAX_SAMPLES] = tempo;
+    float stime = tim[VSPD_MAX_SAMPLES - VSPD_SAMPLES];
+    for (int k = (VSPD_MAX_SAMPLES - VSPD_SAMPLES); k < VSPD_MAX_SAMPLES; k++) {
+      N1 += (tim[k] - stime) * alt[k];
+      N2 += (tim[k] - stime);
+      N3 += (alt[k]);
+      D1 += (tim[k] - stime) * (tim[k] - stime);
+      D2 += (tim[k] - stime);
+    }
+    instantVSpd = 1000 * ((VSPD_SAMPLES * N1) - N2 * N3) / (VSPD_SAMPLES * D1 - D2 * D2);
 
 
 #ifdef ALTITUDE_IN_FEET
-  baroAltitude *= 3.2808;    // Convert altitude from m to ft
-  instantVSpd *= 196.8504; // Convert VSpd from m/s to ft/min
+    baroAltitude *= 3.2808;    // Convert altitude from m to ft
+    instantVSpd *= 196.8504; // Convert VSpd from m/s to ft/min
 #endif
 
-  varioFrSky.setData(baroAltitude, instantVSpd);
-  lastVarioFilterTime = millis();
-  //}
+    varioFrSky.setData(baroAltitude, instantVSpd);
+    lastVarioFilterTime = millis();
+  }
 
 }
 
