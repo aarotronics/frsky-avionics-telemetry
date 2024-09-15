@@ -34,20 +34,20 @@
 #include "FrSkySportPollingDynamic.h"
 
 // ====== START USER CONFIG ======
-//#define FROM_SEA_LEVEL              // Show altitude (from sea level, QNE) instead of height (from ground, QFE)
+//#define FROM_SEA_LEVEL              // Show altitude (from mean sea level, QNE) instead of height (from ground, QFE)
 //#define ALTITUDE_IN_FEET            // Show altitude/height in feet instead of meters
 #define BATT_PER_CELL               // Show battery voltage per cell instead of total voltage
 #define MAX_CELL_VOLTS        4200  // mV
 #define MIN_CELL_VOLTS        3300  // mV
 #define DIVIDER_UPPER_R       6800  // Ohm
-#define DIVIDER_LOWER_R       470   // Ohm
+#define DIVIDER_LOWER_R       390   // Ohm
 #define VOLTAGE_RATE          1.0
 #define VOLTAGE_OFFSET        0.0
 
 
 // ====== END USER CONFIG ======
 #define LED_PIN               13    // Status LED, will turn ON after start-up when system is ready to go
-#define VOLTAGE_PIN           A0    // Analog pin where voltage sensor is connected
+#define VOLTAGE_PIN           A6    // Analog pin where voltage sensor is connected
 #define EMA_ALPHA_BAT         0.10  // Amount of the new value over 1.0 that will be added in each filter loop
 #define EMA_PERIOD_BAT        50    // ms filter loop time
 #define MAX_ADC               1023  // 10 bit ADC
@@ -74,9 +74,9 @@ uint8_t cellNum;
 float adcToVoltsConversionRate;
 float filteredADC = 0, batteryVoltage, cellVoltage, batteryPercent;
 uint32_t lastBatFilterTime = 0, lastVarioFilterTime = 0;
-int gpsHDOP;
+int gpsHDOP = 99;
 float gpsLatitude, gpsLongitude, gpsSpeed, gpsCourse, gpsAltitude;
-float actualPressure, referencePressure, baroAltitude, instantVSpd, filteredVSpd, baroTemp;
+float actualPressure, referencePressure, baroAltitude, instantVSpd, filteredVSpd = 0, baroTemp;
 float lastBaroAltitude = 0;
 float tempo = millis();
 float N1 = 0, N2 = 0, N3 = 0, D1 = 0, D2 = 0;
@@ -112,15 +112,17 @@ void setup() {
   referencePressure /= 200.0;
 #endif
 
-  delay(1000);
+  delay(2000);
   adcToVoltsConversionRate = ((float)ADC_AREF / (float)MAX_ADC) * (((float)DIVIDER_UPPER_R + (float)DIVIDER_LOWER_R) / (float)DIVIDER_LOWER_R);
   batteryVoltage = (analogRead(VOLTAGE_PIN) * adcToVoltsConversionRate * VOLTAGE_RATE) + VOLTAGE_OFFSET;
-  if (batteryVoltage <= 17500) // Get number of cells from total voltage
+  if (batteryVoltage <= 17000) // Get number of cells from total voltage
     cellNum = 4;
-  if (batteryVoltage <= 12700)
+  if (batteryVoltage <= 12800)
     cellNum = 3;
-  if (batteryVoltage <= 8500)
+  if (batteryVoltage <= 8600)
     cellNum = 2;
+  if (batteryVoltage <= 4400)
+    cellNum = 1;
 
   Timer1.initialize(SMARTPORT_UPDATE);    // Interruption used to send data to FrSky SmartPort
   Timer1.attachInterrupt(SmartPort_ISR);
@@ -149,39 +151,52 @@ void loop() {
 
   // GPS
   if (GPS_SERIAL.available()) {
+
     while (GPS_SERIAL.available()) {
       gpsSensor.encode(GPS_SERIAL.read());
     }
+    /*
+        if (gpsSensor.location.isValid()) {
+          gpsLatitude = gpsSensor.location.lat();
+          gpsLongitude = gpsSensor.location.lng();
+          gpsHDOP = gpsSensor.hdop.hdop();
+        } else {
+          gpsLatitude = 0.000000;
+          gpsLongitude = 0.000000;
+          gpsHDOP = 20;
+        }
 
-    if (gpsSensor.location.isValid()) {
-      gpsLatitude = gpsSensor.location.lat();
-      gpsLongitude = gpsSensor.location.lng();
-      gpsHDOP = gpsSensor.hdop.hdop();
-    } else {
-      gpsLatitude = 0.0000000;
-      gpsLongitude = 0.0000000;
-      gpsHDOP = 20;
-    }
+        if (gpsSensor.speed.isValid()) {
+          gpsSpeed = gpsSensor.speed.mps();
+        } else {
+          gpsSpeed = 0.0;
+        }
 
-    if (gpsSensor.speed.isValid()) {
-      gpsSpeed = gpsSensor.speed.mps();
-    } else {
-      gpsSpeed = 0.0;
-    }
+        if (gpsSensor.altitude.isValid()) {
+          gpsAltitude = gpsSensor.altitude.meters();
+        } else {
+          gpsAltitude = 0.0;
+        }
 
-    if (gpsSensor.altitude.isValid()) {
-      gpsAltitude = gpsSensor.altitude.meters();
-    } else {
-      gpsAltitude = 0.0;
-    }
-
-    if (gpsSensor.course.isValid()) {
-      gpsCourse = gpsSensor.course.deg();
-    } else {
-      gpsCourse = 0.0;
-    }
-
-    gpsFrSky.setData(gpsLatitude, gpsLongitude, gpsAltitude, gpsSpeed, gpsCourse, 0, 0, 0, 0, 0, 0);
+        if (gpsSensor.course.isValid()) {
+          gpsCourse = gpsSensor.course.deg();
+        } else {
+          gpsCourse = 0.0;
+        }
+    */
+    gpsHDOP = gpsSensor.hdop.hdop();
+    gpsFrSky.setData(gpsSensor.location.lat(),
+                     gpsSensor.location.lng(),
+                     gpsSensor.altitude.meters(),
+                     gpsSensor.speed.mps(),
+                     gpsSensor.course.deg(),
+                     gpsSensor.date.year() - 2000,
+                     gpsSensor.date.month(),
+                     gpsSensor.date.day(),
+                     gpsSensor.time.hour(),
+                     gpsSensor.time.minute(),
+                     gpsSensor.time.second()
+                    );
   }
 
 
