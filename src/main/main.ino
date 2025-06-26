@@ -41,20 +41,19 @@
 #define MIN_CELL_VOLTS        3300  // mV
 #define DIVIDER_UPPER_R       6800  // Ohm
 #define DIVIDER_LOWER_R       470   // Ohm
-#define VOLTAGE_RATE          1.0
+#define VOLTAGE_RATE          19.80943
 #define VOLTAGE_OFFSET        0.0
 
 
 // ====== END USER CONFIG ======
 #define LED_PIN               13    // Status LED, will turn ON after start-up when system is ready to go
 #define VOLTAGE_PIN           A0    // Analog pin where voltage sensor is connected
-#define EMA_ALPHA_BAT         0.10  // Amount of the new value over 1.0 that will be added in each filter loop
-#define EMA_PERIOD_BAT        50    // ms filter loop time
+#define PERIOD_BAT            50    // ms filter loop time
 #define MAX_ADC               1023  // 10 bit ADC
 #define ADC_AREF              1100  // mV from ATMEGA328P internal 1V1 AREF
 #define GPS_SERIAL            Serial
-#define VSPD_SAMPLES          40
-#define VSPD_MAX_SAMPLES      50
+#define VSPD_SAMPLES          20
+#define VSPD_MAX_SAMPLES      20
 #define EMA_ALPHA_VARIO       0.25
 #define EMA_PERIOD_VARIO      20
 #define SMARTPORT_UPDATE      2000      // FrSky SmartPort update period (us)
@@ -71,7 +70,6 @@ FrSkySportTelemetry     telemetry(new FrSkySportPollingDynamic());
 
 
 uint8_t cellNum;
-float adcToVoltsConversionRate;
 float filteredADC = 0, batteryVoltage, cellVoltage, batteryPercent;
 uint32_t lastBatFilterTime = 0, lastVarioFilterTime = 0;
 int gpsHDOP;
@@ -80,8 +78,8 @@ float actualPressure, referencePressure, baroAltitude, instantVSpd, filteredVSpd
 float lastBaroAltitude = 0;
 float tempo = millis();
 float N1 = 0, N2 = 0, N3 = 0, D1 = 0, D2 = 0;
-float alt[51];
-float tim[51];
+float alt[21];
+float tim[21];
 
 
 void setup() {
@@ -89,7 +87,7 @@ void setup() {
   digitalWrite(LED_PIN, LOW);
   delay(100);
   analogReference(INTERNAL); // Set analog reference to ATMEGA328P internal 1V1
-  GPS_SERIAL.begin(57600);
+  GPS_SERIAL.begin(9600);
   telemetry.begin(FrSkySportSingleWireSerial::SOFT_SERIAL_PIN_3, &fcsFrSky, &gpsFrSky, &varioFrSky, &rpmFrSky);
   baroSensor.begin(0x76);
   baroSensor.setSampling(Adafruit_BMP280::MODE_NORMAL,    // Operating Mode
@@ -113,14 +111,16 @@ void setup() {
 #endif
 
   delay(1000);
-  adcToVoltsConversionRate = ((float)ADC_AREF / (float)MAX_ADC) * (((float)DIVIDER_UPPER_R + (float)DIVIDER_LOWER_R) / (float)DIVIDER_LOWER_R);
-  batteryVoltage = (analogRead(VOLTAGE_PIN) * adcToVoltsConversionRate * VOLTAGE_RATE) + VOLTAGE_OFFSET;
-  if (batteryVoltage <= 17500) // Get number of cells from total voltage
+  cellNum = 4;
+  /*
+    batteryVoltage = (analogRead(VOLTAGE_PIN) * VOLTAGE_RATE) + VOLTAGE_OFFSET;
+    if (batteryVoltage <= 17500) // Get number of cells from total voltage
     cellNum = 4;
-  if (batteryVoltage <= 12700)
+    if (batteryVoltage <= 12700)
     cellNum = 3;
-  if (batteryVoltage <= 8500)
+    if (batteryVoltage <= 8500)
     cellNum = 2;
+  */
 
   Timer1.initialize(SMARTPORT_UPDATE);    // Interruption used to send data to FrSky SmartPort
   Timer1.attachInterrupt(SmartPort_ISR);
@@ -132,11 +132,17 @@ void setup() {
 void loop() {
 
   // Voltage
-  if (millis() >= (lastBatFilterTime + EMA_PERIOD_BAT)) {
-    filteredADC = (analogRead(VOLTAGE_PIN) * EMA_ALPHA_BAT) + (filteredADC * (1.0 - EMA_ALPHA_BAT));
-    batteryVoltage = (filteredADC * adcToVoltsConversionRate * VOLTAGE_RATE) + VOLTAGE_OFFSET;
+  if (millis() >= (lastBatFilterTime + PERIOD_BAT)) {
+    filteredADC = 0;
+    for (int counter = 0; counter < 50; counter++) {
+      filteredADC += analogRead(VOLTAGE_PIN);
+      delayMicroseconds(50);
+    }
+    filteredADC /= 50.0;
+    batteryVoltage = (filteredADC * VOLTAGE_RATE) + VOLTAGE_OFFSET;
     cellVoltage = batteryVoltage / (float)cellNum;
     batteryPercent = constrain(((cellVoltage - MIN_CELL_VOLTS) * 100.0 / (MAX_CELL_VOLTS - MIN_CELL_VOLTS)) , 0.0, 100.0);
+
 #ifdef BATT_PER_CELL
     fcsFrSky.setData(0, (float)cellVoltage / 1000.0);
 #else
