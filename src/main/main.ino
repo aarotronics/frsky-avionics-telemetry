@@ -39,8 +39,6 @@
 #define BATT_PER_CELL               // Show battery voltage per cell instead of total voltage
 #define MAX_CELL_VOLTS        4200  // mV
 #define MIN_CELL_VOLTS        3300  // mV
-#define DIVIDER_UPPER_R       6800  // Ohm
-#define DIVIDER_LOWER_R       470   // Ohm
 #define VOLTAGE_RATE          19.80943
 #define VOLTAGE_OFFSET        0.0
 
@@ -48,9 +46,7 @@
 // ====== END USER CONFIG ======
 #define LED_PIN               13    // Status LED, will turn ON after start-up when system is ready to go
 #define VOLTAGE_PIN           A0    // Analog pin where voltage sensor is connected
-#define PERIOD_BAT            50    // ms filter loop time
-#define MAX_ADC               1023  // 10 bit ADC
-#define ADC_AREF              1100  // mV from ATMEGA328P internal 1V1 AREF
+#define PERIOD_BAT            50    // Battery measure period time
 #define GPS_SERIAL            Serial
 #define VSPD_SAMPLES          20
 #define VSPD_MAX_SAMPLES      20
